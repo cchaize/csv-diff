@@ -200,16 +200,34 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
         }
     }
 
-    // Detect moved columns (columns that exist in both but at different positions)
+    // Detect moved columns using LIS algorithm
+    // Build a list of columns that exist in both old and new, with their positions
+    const columnMatches: Array<{ column: string; oldIndex: number; newIndex: number }> = [];
     for (let i = 0; i < oldHeaders.length; i++) {
         const header = oldHeaders[i];
         const newIndex = newHeaders.indexOf(header);
 
-        if (newIndex !== -1 && newIndex !== i) {
-            diff.movedColumns.push({
+        if (newIndex !== -1) {
+            columnMatches.push({
                 column: header,
                 oldIndex: i,
                 newIndex: newIndex,
+            });
+        }
+    }
+
+    // Find LIS based on newIndex positions
+    const newIndices = columnMatches.map(m => m.newIndex);
+    const lisIndices = getLongestIncreasingSubsequence(newIndices);
+    const lisSet = new Set(lisIndices);
+
+    // Mark columns not in LIS as moved
+    for (const match of columnMatches) {
+        if (!lisSet.has(match.newIndex)) {
+            diff.movedColumns.push({
+                column: match.column,
+                oldIndex: match.oldIndex,
+                newIndex: match.newIndex,
             });
         }
     }
@@ -234,7 +252,11 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
             .filter((index) => index !== -1);
 
         // First pass: match all rows and detect added/deleted
-        const rowMatches: Array<{ oldIndex: number; newIndex: number; rowData: string[] }> = [];
+        const rowMatches: Array<{
+            oldIndex: number;
+            newIndex: number;
+            rowData: string[];
+        }> = [];
         const matchedOldRows = new Set<number>();
         const matchedNewRows = new Set<number>();
 
@@ -257,11 +279,11 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
                     found = true;
                     matchedNewRows.add(j);
                     matchedOldRows.add(i);
-                    
+
                     rowMatches.push({
                         oldIndex: i,
                         newIndex: j,
-                        rowData: newRows[j]
+                        rowData: newRows[j],
                     });
                     break;
                 }
@@ -283,14 +305,14 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
         // Second pass: detect actual moves using Longest Increasing Subsequence (LIS)
         // Rows that maintain their relative order are not moved
         // Only rows that break the sequence are marked as moved
-        
+
         // Build sequence of newIndex values for matched rows
-        const newIndices = rowMatches.map(m => m.newIndex);
-        
+        const newIndices = rowMatches.map((m) => m.newIndex);
+
         // Find Longest Increasing Subsequence
         const lis = getLongestIncreasingSubsequence(newIndices);
         const lisSet = new Set(lis);
-        
+
         // Mark rows not in LIS as moved
         for (const match of rowMatches) {
             if (!lisSet.has(match.newIndex)) {
@@ -311,11 +333,11 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
 // Helper function: Find Longest Increasing Subsequence indices
 function getLongestIncreasingSubsequence(arr: number[]): number[] {
     if (arr.length === 0) return [];
-    
+
     const n = arr.length;
     const dp: number[] = new Array(n).fill(1);
     const parent: number[] = new Array(n).fill(-1);
-    
+
     for (let i = 1; i < n; i++) {
         for (let j = 0; j < i; j++) {
             if (arr[j] < arr[i] && dp[j] + 1 > dp[i]) {
@@ -324,7 +346,7 @@ function getLongestIncreasingSubsequence(arr: number[]): number[] {
             }
         }
     }
-    
+
     // Find index with maximum LIS length
     let maxLength = 0;
     let maxIndex = 0;
@@ -334,7 +356,7 @@ function getLongestIncreasingSubsequence(arr: number[]): number[] {
             maxIndex = i;
         }
     }
-    
+
     // Reconstruct LIS
     const result: number[] = [];
     let current = maxIndex;
