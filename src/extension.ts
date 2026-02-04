@@ -202,7 +202,11 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
 
     // Detect moved columns using LIS algorithm
     // Build a list of columns that exist in both old and new, with their positions
-    const columnMatches: Array<{ column: string; oldIndex: number; newIndex: number }> = [];
+    const columnMatches: Array<{
+        column: string;
+        oldIndex: number;
+        newIndex: number;
+    }> = [];
     for (let i = 0; i < oldHeaders.length; i++) {
         const header = oldHeaders[i];
         const newIndex = newHeaders.indexOf(header);
@@ -217,7 +221,7 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
     }
 
     // Find LIS based on newIndex positions
-    const newIndices = columnMatches.map(m => m.newIndex);
+    const newIndices = columnMatches.map((m) => m.newIndex);
     const lisIndices = getLongestIncreasingSubsequence(newIndices);
     const lisSet = new Set(lisIndices);
 

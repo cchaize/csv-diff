@@ -14,33 +14,40 @@ A VSCode extension that displays differences in modified CSV files, similar to t
 
 ## 📦 Installation
 
-### Method 1: Local Development
+### From GitHub Releases (Recommended)
 
-1. Clone or copy the extension files to a folder
-2. Open the folder in VSCode
-3. Install dependencies:
-    ```bash
-    npm install
-    ```
-4. Compile the extension:
-    ```bash
-    npm run compile
-    ```
-5. Press `F5` to launch the extension in debug mode
+Download the latest `.vsix` file from [GitHub Releases](https://github.com/cchaize/csv-diff/releases) and install it:
 
-### Method 2: VSIX Package
+- `Extensions` → `...` → `Install from VSIX...`
+- Or via command line: `code --install-extension csv-diff-viewer-x.x.x.vsix`
+
+### For Colleagues
 
 1. Install `vsce` (VSCode Extension Manager):
     ```bash
     npm install -g @vscode/vsce
     ```
-2. Create the package:
+2. Create the VSIX package:
     ```bash
     vsce package
     ```
-3. Install the generated `.vsix` file:
-    - VSCode Menu: `Extensions` → `...` → `Install from VSIX...`
+3. Share the generated `.vsix` file with colleagues
+4. They can install it in VSCode:
+    - `Extensions` → `...` → `Install from VSIX...`
     - Or via command line: `code --install-extension csv-diff-viewer-0.0.1.vsix`
+
+### For Local Development
+
+1. Clone the repository
+2. Install dependencies:
+    ```bash
+    npm install
+    ```
+3. Compile the extension:
+    ```bash
+    npm run compile
+    ```
+4. Press `F5` to launch the extension in debug mode
 
 ## 🚀 Usage
 
@@ -115,6 +122,23 @@ npm run watch
 ### Debugging
 
 1. Press `F5` in VSCode
+2. A new VSCode window opens with the extension loaded
+3. Open a Git project with CSV files
+4. Modify a CSV and watch the "CSV Changes" view
+
+### Building for colleagues
+
+To share with colleagues, build a VSIX file:
+
+```bash
+npm install -g @vscode/vsce
+vsce package
+```
+
+This creates a `.vsix` file that colleagues can install directly in VSCode via `Extensions: Install from VSIX`.
+
+## 📝 Technical Notes
+
 2. A new VSCode window opens with the extension loaded
 3. Open a Git project with CSV files
 4. Modify a CSV and watch the "CSV Changes" view

@@ -1,17 +1,29 @@
 {
-    "name": "csv-diff",
+    "name": "csv-diff-viewer",
     "displayName": "CSV Diff Viewer",
-    "description": "Affiche les différences dans les fichiers CSV modifiés",
+    "description": "Compare CSV files and visualize differences (added/removed/moved columns and rows)",
     "version": "0.0.1",
     "engines": {
         "vscode": "^1.85.0"
     },
     "categories": [
-        "Other"
+        "Other",
+        "Visualization"
+    ],
+    "keywords": [
+        "csv",
+        "diff",
+        "compare",
+        "git",
+        "changes"
     ],
     "repository": {
         "type": "git",
         "url": "https://github.com/cchaize/csv-diff.git"
+    },
+    "homepage": "https://github.com/cchaize/csv-diff",
+    "bugs": {
+        "url": "https://github.com/cchaize/csv-diff/issues"
     },
     "publisher": "cchaize",
     "activationEvents": [
