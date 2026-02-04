@@ -150,7 +150,14 @@ interface CsvDiff {
     addedColumns: string[];
     removedColumns: string[];
     movedColumns: Array<{ column: string; oldIndex: number; newIndex: number }>;
-    movedRows: Array<{ rowId: string; oldIndex: number; newIndex: number }>;
+    movedRows: Array<{
+        rowId: string;
+        oldIndex: number;
+        newIndex: number;
+        rowData: string[];
+    }>;
+    addedRows: string[][];
+    deletedRows: string[][];
     oldHeaders: string[];
     newHeaders: string[];
 }
@@ -161,6 +168,8 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
         removedColumns: [],
         movedColumns: [],
         movedRows: [],
+        addedRows: [],
+        deletedRows: [],
         oldHeaders: [],
         newHeaders: [],
     };
@@ -224,7 +233,8 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
             )
             .filter((index) => index !== -1);
 
-        // Track which new rows have been matched to avoid duplicates
+        // Track which rows have been matched to avoid duplicates
+        const matchedOldRows = new Set<number>();
         const matchedNewRows = new Set<number>();
 
         for (let i = 0; i < oldRows.length; i++) {
@@ -233,6 +243,7 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
                 .map((index) => oldRows[i][index])
                 .join("|");
 
+            let found = false;
             for (let j = 0; j < newRows.length; j++) {
                 if (matchedNewRows.has(j)) continue;
 
@@ -241,17 +252,36 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
                     .map((index) => newRows[j][index])
                     .join("|");
 
-                if (normalizedOldRow === normalizedNewRow && i !== j) {
-                    // Use first column as row identifier for display
-                    const rowId = oldRows[i][0];
-                    diff.movedRows.push({
-                        rowId: rowId,
-                        oldIndex: i + 1, // +1 because we excluded header
-                        newIndex: j + 1,
-                    });
+                if (normalizedOldRow === normalizedNewRow) {
+                    found = true;
                     matchedNewRows.add(j);
+                    matchedOldRows.add(i);
+
+                    // Only add to movedRows if position changed
+                    if (i !== j) {
+                        // Use first column as row identifier for display
+                        const rowId = oldRows[i][0];
+                        diff.movedRows.push({
+                            rowId: rowId,
+                            oldIndex: i + 1, // +1 because we excluded header
+                            newIndex: j + 1,
+                            rowData: newRows[j],
+                        });
+                    }
                     break;
                 }
+            }
+
+            // If row not found in new data, it's deleted
+            if (!found) {
+                diff.deletedRows.push(oldRows[i]);
+            }
+        }
+
+        // Detect added rows (rows in new data that weren't matched)
+        for (let j = 0; j < newRows.length; j++) {
+            if (!matchedNewRows.has(j)) {
+                diff.addedRows.push(newRows[j]);
             }
         }
     }
@@ -325,6 +355,32 @@ function getWebviewContent(fileUri: vscode.Uri, diff: CsvDiff): string {
             font-weight: bold;
             margin-left: 10px;
         }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        table th {
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-foreground);
+            padding: 8px;
+            text-align: left;
+            border: 1px solid var(--vscode-panel-border);
+            font-weight: bold;
+        }
+        table td {
+            padding: 8px;
+            border: 1px solid var(--vscode-panel-border);
+        }
+        table tr:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        .row-info {
+            font-style: italic;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -367,13 +423,76 @@ function getWebviewContent(fileUri: vscode.Uri, diff: CsvDiff): string {
         <h2 class="moved">↕️ Lignes déplacées <span class="count">(${diff.movedRows.length})</span></h2>
         ${
             diff.movedRows.length > 0
-                ? `<ul>${diff.movedRows
+                ? diff.movedRows
                       .map(
-                          (m) =>
-                              `<li class="moved">• Ligne "${m.rowId}": ligne ${m.oldIndex} → ${m.newIndex}</li>`,
+                          (m) => `
+                    <div class="row-info">Ligne ${m.oldIndex} → ${m.newIndex}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                ${diff.newHeaders.map((h) => `<th>${h}</th>`).join("")}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="moved">
+                                ${m.rowData.map((cell) => `<td>${cell}</td>`).join("")}
+                            </tr>
+                        </tbody>
+                    </table>
+                `,
                       )
-                      .join("")}</ul>`
+                      .join("")
                 : '<p class="no-changes">Aucune ligne déplacée</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="added">➕ Lignes ajoutées <span class="count">(${diff.addedRows.length})</span></h2>
+        ${
+            diff.addedRows.length > 0
+                ? `
+                <table>
+                    <thead>
+                        <tr>
+                            ${diff.newHeaders.map((h) => `<th>${h}</th>`).join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diff.addedRows
+                            .map(
+                                (row) =>
+                                    `<tr class="added">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+                `
+                : '<p class="no-changes">Aucune ligne ajoutée</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="removed">➖ Lignes supprimées <span class="count">(${diff.deletedRows.length})</span></h2>
+        ${
+            diff.deletedRows.length > 0
+                ? `
+                <table>
+                    <thead>
+                        <tr>
+                            ${diff.oldHeaders.map((h) => `<th>${h}</th>`).join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diff.deletedRows
+                            .map(
+                                (row) =>
+                                    `<tr class="removed">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+                `
+                : '<p class="no-changes">Aucune ligne supprimée</p>'
         }
     </div>
 </body>
