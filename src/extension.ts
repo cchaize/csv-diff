@@ -409,8 +409,22 @@ function buildCompleteView(
             const identifier = newRow[0];
 
             const rowData = new Map<string, string>();
+            
+            // Add values from new data
             for (let j = 0; j < diff.newHeaders.length; j++) {
                 rowData.set(diff.newHeaders[j], newRow[j]);
+            }
+
+            // Add values from old data for removed columns
+            const oldIndex = oldRowIndexMap.get(identifier);
+            if (oldIndex !== undefined) {
+                const oldRow = oldRows[oldIndex];
+                for (let j = 0; j < diff.oldHeaders.length; j++) {
+                    const header = diff.oldHeaders[j];
+                    if (diff.removedColumns.includes(header)) {
+                        rowData.set(header, oldRow[j]);
+                    }
+                }
             }
 
             // Determine status
@@ -429,7 +443,6 @@ function buildCompleteView(
             processedNewRows.add(i);
 
             // Mark old row as processed if it exists
-            const oldIndex = oldRowIndexMap.get(identifier);
             if (oldIndex !== undefined) {
                 processedOldRows.add(oldIndex);
             }
@@ -554,6 +567,11 @@ function getWebviewContent(
         }
         .complete-table tr.row-moved {
             background-color: rgba(220, 220, 170, 0.1);
+        }
+        .complete-table td.cell-removed-column {
+            background-color: rgba(244, 135, 113, 0.3);
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
         }
         .complete-table td.cell-diagonal {
             background: 
@@ -716,9 +734,18 @@ function getWebviewContent(
                                 const isDiagonal =
                                     row.status === "added" &&
                                     headerStatus === "removed";
-                                const cellClass = isDiagonal
-                                    ? "cell-diagonal"
-                                    : "";
+                                
+                                // Red background for removed columns (except for added rows)
+                                const isRemovedColumn =
+                                    headerStatus === "removed" &&
+                                    row.status !== "added";
+                                
+                                let cellClass = "";
+                                if (isDiagonal) {
+                                    cellClass = "cell-diagonal";
+                                } else if (isRemovedColumn) {
+                                    cellClass = "cell-removed-column";
+                                }
 
                                 return `<td class="${cellClass}">${cellValue}</td>`;
                             })
