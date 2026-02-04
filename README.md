@@ -1,5 +1,7 @@
 # CSV Diff Viewer - VSCode Extension
 
+add right click et log
+
 A VSCode extension that displays differences in modified CSV files, similar to the Source Control interface.
 
 ## 🎯 Features

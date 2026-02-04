@@ -3,13 +3,23 @@ import * as path from "path";
 import { promises as fs } from "fs";
 import { parse } from "csv-parse/sync";
 
+// Create output channel for logging
+const outputChannel = vscode.window.createOutputChannel("CSV Diff Viewer");
+
 export function activate(context: vscode.ExtensionContext) {
     const csvDiffProvider = new CsvDiffProvider();
+
+    outputChannel.appendLine("=".repeat(50));
+    outputChannel.appendLine("CSV Diff Viewer extension activated");
+    outputChannel.appendLine("Timestamp: " + new Date().toISOString());
+    outputChannel.appendLine("=".repeat(50));
+    outputChannel.show();
 
     vscode.window.registerTreeDataProvider("csvDiffView", csvDiffProvider);
 
     context.subscriptions.push(
         vscode.commands.registerCommand("csvDiffViewer.refresh", () => {
+            outputChannel.appendLine("[REFRESH] Refresh command triggered");
             csvDiffProvider.refresh();
         }),
     );
@@ -18,7 +28,29 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand(
             "csvDiffViewer.showDiff",
             async (item: CsvFileItem) => {
+                outputChannel.appendLine(
+                    `[SHOW DIFF] Command triggered for: ${item.label}`,
+                );
                 await showCsvDiff(item.resourceUri);
+            },
+        ),
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "csvDiffViewer.showStagedDiff",
+            async (resource: unknown) => {
+                const resourceUri = resolveResourceUri(resource);
+                if (!resourceUri) {
+                    outputChannel.appendLine(
+                        "[STAGED DIFF] Command triggered without a valid resource URI",
+                    );
+                    return;
+                }
+                outputChannel.appendLine(
+                    `[STAGED DIFF] Command triggered for: ${resourceUri.fsPath}`,
+                );
+                await showStagedDiff(resourceUri);
             },
         ),
     );
@@ -99,35 +131,166 @@ class CsvFileItem extends vscode.TreeItem {
     }
 }
 
-async function showCsvDiff(fileUri: vscode.Uri) {
+function resolveResourceUri(resource: unknown): vscode.Uri | undefined {
+    if (resource instanceof vscode.Uri) {
+        return resource;
+    }
+
+    if (resource && typeof resource === "object") {
+        const candidate = (resource as { resourceUri?: unknown }).resourceUri;
+        if (candidate instanceof vscode.Uri) {
+            return candidate;
+        }
+    }
+
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor?.document?.uri) {
+        return activeEditor.document.uri;
+    }
+
+    return undefined;
+}
+
+async function showStagedDiff(fileUri: vscode.Uri) {
     try {
+        outputChannel.appendLine(
+            `[STAGED DIFF] showStagedDiff called for: ${fileUri.fsPath}`,
+        );
         const gitExtension =
             vscode.extensions.getExtension("vscode.git")?.exports;
         const git = gitExtension?.getAPI(1);
 
         if (!git || git.repositories.length === 0) {
+            outputChannel.appendLine("[STAGED DIFF] No git repository found");
             vscode.window.showErrorMessage("No git repository found");
             return;
         }
 
         const repo = git.repositories[0];
+        outputChannel.appendLine("[STAGED DIFF] Git repository found");
+
+        // Check if file is staged by comparing normalized paths
+        const filePath = fileUri.fsPath;
+        const indexChanges = repo.state.indexChanges;
+        outputChannel.appendLine(`[STAGED DIFF] Looking for: ${filePath}`);
+        outputChannel.appendLine(
+            `[STAGED DIFF] Staged files: ${indexChanges.map((c: any) => c.uri.fsPath).join(", ")}`,
+        );
+
+        const isStaged = indexChanges.some(
+            (change: any) => change.uri.fsPath === filePath,
+        );
+
+        if (!isStaged) {
+            const relativePath = vscode.workspace.asRelativePath(fileUri);
+            outputChannel.appendLine(
+                `[STAGED DIFF] File not staged: ${relativePath}`,
+            );
+            vscode.window.showErrorMessage(
+                `File is not staged: ${relativePath}`,
+            );
+            return;
+        }
+
+        const relativePath = vscode.workspace.asRelativePath(fileUri);
+        outputChannel.appendLine(
+            `[STAGED DIFF] File is staged: ${relativePath}`,
+        );
+
+        // Get staged version (index)
+        outputChannel.appendLine(
+            "[STAGED DIFF] Fetching staged version from index",
+        );
+        const stagedContent = await repo.show("", fileUri.fsPath);
+
+        // Get last commit version (HEAD)
+        outputChannel.appendLine(
+            "[STAGED DIFF] Fetching last commit version from HEAD",
+        );
+        const currentContent = await repo.show("HEAD", fileUri.fsPath);
+
+        // Parse CSV files
+        outputChannel.appendLine("[STAGED DIFF] Parsing CSV files");
+        const oldData = parseCsv(stagedContent);
+        const newData = parseCsv(currentContent);
+
+        outputChannel.appendLine(
+            `[STAGED DIFF] Staged rows: ${oldData.length}, Current rows: ${newData.length}`,
+        );
+
+        // Analyze differences
+        outputChannel.appendLine("[STAGED DIFF] Analyzing differences");
+        const diff = analyzeCsvDiff(oldData, newData);
+
+        outputChannel.appendLine(
+            `[STAGED DIFF] Columns: ${diff.addedColumns.length} added, ${diff.removedColumns.length} removed, ${diff.movedColumns.length} moved`,
+        );
+        outputChannel.appendLine(
+            `[STAGED DIFF] Rows: ${diff.addedRows.length} added, ${diff.deletedRows.length} deleted, ${diff.movedRows.length} moved`,
+        );
+
+        // Display report
+        outputChannel.appendLine("[STAGED DIFF] Displaying report");
+        await displayStagedDiffReport(fileUri, diff, oldData, newData);
+    } catch (error) {
+        outputChannel.appendLine(`[STAGED DIFF] Error: ${String(error)}`);
+        vscode.window.showErrorMessage(`Error analyzing staged CSV: ${error}`);
+    }
+}
+
+async function showCsvDiff(fileUri: vscode.Uri) {
+    try {
+        outputChannel.appendLine(
+            `[WORKING DIFF] showCsvDiff called for: ${fileUri.fsPath}`,
+        );
+        const gitExtension =
+            vscode.extensions.getExtension("vscode.git")?.exports;
+        const git = gitExtension?.getAPI(1);
+
+        if (!git || git.repositories.length === 0) {
+            outputChannel.appendLine("[WORKING DIFF] No git repository found");
+            vscode.window.showErrorMessage("No git repository found");
+            return;
+        }
+
+        const repo = git.repositories[0];
+        outputChannel.appendLine("[WORKING DIFF] Git repository found");
 
         // Get HEAD version
+        outputChannel.appendLine("[WORKING DIFF] Fetching HEAD version");
         const headContent = await repo.show("HEAD", fileUri.fsPath);
 
         // Get current version
+        outputChannel.appendLine(
+            "[WORKING DIFF] Fetching current version from working directory",
+        );
         const currentContent = await fs.readFile(fileUri.fsPath, "utf-8");
 
         // Parse CSV files
+        outputChannel.appendLine("[WORKING DIFF] Parsing CSV files");
         const oldData = parseCsv(headContent);
         const newData = parseCsv(currentContent);
 
+        outputChannel.appendLine(
+            `[WORKING DIFF] HEAD rows: ${oldData.length}, Current rows: ${newData.length}`,
+        );
+
         // Analyze differences
+        outputChannel.appendLine("[WORKING DIFF] Analyzing differences");
         const diff = analyzeCsvDiff(oldData, newData);
 
+        outputChannel.appendLine(
+            `[WORKING DIFF] Columns: ${diff.addedColumns.length} added, ${diff.removedColumns.length} removed, ${diff.movedColumns.length} moved`,
+        );
+        outputChannel.appendLine(
+            `[WORKING DIFF] Rows: ${diff.addedRows.length} added, ${diff.deletedRows.length} deleted, ${diff.movedRows.length} moved`,
+        );
+
         // Display report
+        outputChannel.appendLine("[WORKING DIFF] Displaying report");
         await displayDiffReport(fileUri, diff, oldData, newData);
     } catch (error) {
+        outputChannel.appendLine(`[WORKING DIFF] Error: ${String(error)}`);
         vscode.window.showErrorMessage(`Error analyzing CSV: ${error}`);
     }
 }
@@ -386,6 +549,27 @@ async function displayDiffReport(
     );
 
     panel.webview.html = getWebviewContent(fileUri, diff, oldData, newData);
+}
+
+async function displayStagedDiffReport(
+    fileUri: vscode.Uri,
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+) {
+    const panel = vscode.window.createWebviewPanel(
+        "csvStagedDiffReport",
+        `Staged Changes: ${path.basename(fileUri.fsPath)}`,
+        vscode.ViewColumn.One,
+        {},
+    );
+
+    panel.webview.html = getStagedWebviewContent(
+        fileUri,
+        diff,
+        oldData,
+        newData,
+    );
 }
 
 function buildCompleteView(
@@ -669,6 +853,329 @@ function getWebviewContent(
 </head>
 <body>
     <h1>📊 CSV Diff Report</h1>
+    <p><strong>File:</strong> ${fileName}</p>
+    
+    <div class="section">
+        <h2 class="added">➕ Added Columns <span class="count">(${diff.addedColumns.length})</span></h2>
+        ${
+            diff.addedColumns.length > 0
+                ? `<ul>${diff.addedColumns.map((col) => `<li class="added">• ${col}</li>`).join("")}</ul>`
+                : '<p class="no-changes">No columns added</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="removed">➖ Removed Columns <span class="count">(${diff.removedColumns.length})</span></h2>
+        ${
+            diff.removedColumns.length > 0
+                ? `<ul>${diff.removedColumns.map((col) => `<li class="removed">• ${col}</li>`).join("")}</ul>`
+                : '<p class="no-changes">No columns removed</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="moved">🔄 Moved Columns <span class="count">(${diff.movedColumns.length})</span></h2>
+        ${
+            diff.movedColumns.length > 0
+                ? `<ul>${diff.movedColumns
+                      .map(
+                          (m) =>
+                              `<li class="moved">• ${m.column}: position ${m.oldIndex} → ${m.newIndex}</li>`,
+                      )
+                      .join("")}</ul>`
+                : '<p class="no-changes">No columns moved</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="moved">↕️ Moved Rows <span class="count">(${diff.movedRows.length})</span></h2>
+        ${
+            diff.movedRows.length > 0
+                ? diff.movedRows
+                      .map(
+                          (m) => `
+                    <div class="row-info">Row ${m.oldIndex} → ${m.newIndex}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                ${diff.newHeaders.map((h) => `<th>${h}</th>`).join("")}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="moved">
+                                ${m.rowData.map((cell) => `<td>${cell}</td>`).join("")}
+                            </tr>
+                        </tbody>
+                    </table>
+                `,
+                      )
+                      .join("")
+                : '<p class="no-changes">No rows moved</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="added">➕ Added Rows <span class="count">(${diff.addedRows.length})</span></h2>
+        ${
+            diff.addedRows.length > 0
+                ? `
+                <table>
+                    <thead>
+                        <tr>
+                            ${diff.newHeaders.map((h) => `<th>${h}</th>`).join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diff.addedRows
+                            .map(
+                                (row) =>
+                                    `<tr class="added">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+                `
+                : '<p class="no-changes">No rows added</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="removed">➖ Removed Rows <span class="count">(${diff.deletedRows.length})</span></h2>
+        ${
+            diff.deletedRows.length > 0
+                ? `
+                <table>
+                    <thead>
+                        <tr>
+                            ${diff.oldHeaders.map((h) => `<th>${h}</th>`).join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diff.deletedRows
+                            .map(
+                                (row) =>
+                                    `<tr class="removed">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+                `
+                : '<p class="no-changes">No rows removed</p>'
+        }
+    </div>
+    
+    <div class="section complete-table">
+        <h2>📋 Complete View</h2>
+        <p style="color: var(--vscode-descriptionForeground); font-size: 0.9em;">
+            Display of all rows and columns with their status
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    ${completeView.allHeaders
+                        .map((header) => {
+                            const status =
+                                completeView.headerStatus.get(header) ||
+                                "normal";
+                            const className =
+                                status === "normal" ? "" : `header-${status}`;
+                            return `<th class="${className}">${header}</th>`;
+                        })
+                        .join("")}
+                </tr>
+            </thead>
+            <tbody>
+                ${completeView.allRows
+                    .map((row) => {
+                        const rowClass =
+                            row.status === "normal" ? "" : `row-${row.status}`;
+                        return `<tr class="${rowClass}">
+                        ${completeView.allHeaders
+                            .map((header) => {
+                                const cellValue = row.data.get(header) || "";
+                                const headerStatus =
+                                    completeView.headerStatus.get(header) ||
+                                    "normal";
+
+                                // Diagonal line for added rows + removed columns
+                                const isDiagonal =
+                                    row.status === "added" &&
+                                    headerStatus === "removed";
+
+                                // Red background for removed columns (except for added rows)
+                                const isRemovedColumn =
+                                    headerStatus === "removed" &&
+                                    row.status !== "added";
+
+                                let cellClass = "";
+                                if (isDiagonal) {
+                                    cellClass = "cell-diagonal";
+                                } else if (isRemovedColumn) {
+                                    cellClass = "cell-removed-column";
+                                }
+
+                                return `<td class="${cellClass}">${cellValue}</td>`;
+                            })
+                            .join("")}
+                    </tr>`;
+                    })
+                    .join("")}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+
+    return html;
+}
+
+function getStagedWebviewContent(
+    fileUri: vscode.Uri,
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+): string {
+    const fileName = path.basename(fileUri.fsPath);
+    const completeView = buildCompleteView(diff, oldData, newData);
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staged Changes Report</title>
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            padding: 20px;
+            color: var(--vscode-foreground);
+        }
+        h1 {
+            color: var(--vscode-foreground);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin-top: 30px;
+            color: var(--vscode-foreground);
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: var(--vscode-editor-background);
+            border-radius: 5px;
+        }
+        .added {
+            color: #4ec9b0;
+        }
+        .removed {
+            color: #f48771;
+        }
+        .moved {
+            color: #dcdcaa;
+        }
+        ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        li {
+            padding: 5px 0;
+            margin: 5px 0;
+        }
+        .no-changes {
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+        }
+        .count {
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        table th {
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-foreground);
+            padding: 8px;
+            text-align: left;
+            border: 1px solid var(--vscode-panel-border);
+            font-weight: bold;
+        }
+        table td {
+            padding: 8px;
+            border: 1px solid var(--vscode-panel-border);
+        }
+        table tr:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        .row-info {
+            font-style: italic;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 5px;
+        }
+        .complete-table {
+            overflow-x: auto;
+        }
+        .complete-table table {
+            font-size: 0.85em;
+        }
+        .complete-table th.header-added {
+            background-color: rgba(78, 201, 176, 0.2);
+            color: #4ec9b0;
+        }
+        .complete-table th.header-removed {
+            background-color: rgba(244, 135, 113, 0.2);
+            color: #f48771;
+        }
+        .complete-table th.header-moved {
+            background-color: rgba(220, 220, 170, 0.2);
+            color: #dcdcaa;
+        }
+        .complete-table tr.row-added {
+            background-color: rgba(78, 201, 176, 0.1);
+        }
+        .complete-table tr.row-removed {
+            background-color: rgba(244, 135, 113, 0.1);
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
+        }
+        .complete-table tr.row-moved {
+            background-color: rgba(220, 220, 170, 0.1);
+        }
+        .complete-table td.cell-removed-column {
+            background-color: rgba(244, 135, 113, 0.3);
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
+        }
+        .complete-table td.cell-diagonal {
+            background: 
+                linear-gradient(to top right,
+                    rgba(0,0,0,0) 0%,
+                    rgba(0,0,0,0) calc(50% - 1px),
+                    var(--vscode-panel-border) 50%,
+                    rgba(0,0,0,0) calc(50% + 1px),
+                    rgba(0,0,0,0) 100%);
+        }
+        .warning-banner {
+            background-color: rgba(220, 220, 170, 0.2);
+            border: 1px solid #dcdcaa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #dcdcaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="warning-banner">
+        <strong>⚠️ Staged Changes Preview</strong><br>
+        <small>This shows differences between your staged version and working directory changes</small>
+    </div>
+    
+    <h1>📊 Staged Changes Report</h1>
     <p><strong>File:</strong> ${fileName}</p>
     
     <div class="section">

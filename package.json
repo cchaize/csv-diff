@@ -28,7 +28,10 @@
     },
     "publisher": "cchaize",
     "activationEvents": [
-        "onView:csvDiffView"
+        "onView:csvDiffView",
+        "onCommand:csvDiffViewer.refresh",
+        "onCommand:csvDiffViewer.showDiff",
+        "onCommand:csvDiffViewer.showStagedDiff"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -49,6 +52,10 @@
             {
                 "command": "csvDiffViewer.showDiff",
                 "title": "Show CSV Diff"
+            },
+            {
+                "command": "csvDiffViewer.showStagedDiff",
+                "title": "Show Staged Changes Diff"
             }
         ],
         "menus": {
@@ -57,6 +64,13 @@
                     "command": "csvDiffViewer.refresh",
                     "when": "view == csvDiffView",
                     "group": "navigation"
+                }
+            ],
+            "editor/title/context": [
+                {
+                    "command": "csvDiffViewer.showStagedDiff",
+                    "when": "resourceExtname == .csv",
+                    "group": "1_modification"
                 }
             ]
         }
