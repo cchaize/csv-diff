@@ -3,6 +3,7 @@
     "displayName": "CSV Diff Viewer",
     "description": "Compare CSV files and visualize differences (added/removed/moved columns and rows)",
     "version": "0.0.1",
+    "icon": "icon.png",
     "engines": {
         "vscode": "^1.85.0"
     },

@@ -1,0 +1,36 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" fill="#1e1e1e" rx="12"/>
+  
+  <!-- CSV Grid representation -->
+  <g transform="translate(20, 20)">
+    <!-- Header row -->
+    <rect x="0" y="0" width="88" height="16" fill="#4ec9b0" opacity="0.3"/>
+    
+    <!-- Grid lines (vertical) -->
+    <line x1="29" y1="0" x2="29" y2="88" stroke="#666" stroke-width="1"/>
+    <line x1="59" y1="0" x2="59" y2="88" stroke="#666" stroke-width="1"/>
+    
+    <!-- Grid lines (horizontal) -->
+    <line x1="0" y1="16" x2="88" y2="16" stroke="#666" stroke-width="1"/>
+    <line x1="0" y1="32" x2="88" y2="32" stroke="#666" stroke-width="1"/>
+    <line x1="0" y1="48" x2="88" y2="48" stroke="#666" stroke-width="1"/>
+    <line x1="0" y1="64" x2="88" y2="64" stroke="#666" stroke-width="1"/>
+    <line x1="0" y1="80" x2="88" y2="80" stroke="#666" stroke-width="1"/>
+    
+    <!-- Added row (green) -->
+    <rect x="0" y="32" width="88" height="16" fill="#4ec9b0" opacity="0.2"/>
+    <text x="5" y="43" font-family="Arial" font-size="12" fill="#4ec9b0" font-weight="bold">+</text>
+    
+    <!-- Removed row (red) -->
+    <rect x="0" y="64" width="88" height="16" fill="#f48771" opacity="0.2"/>
+    <text x="5" y="75" font-family="Arial" font-size="12" fill="#f48771" font-weight="bold">-</text>
+    
+    <!-- Moved row (yellow) -->
+    <rect x="0" y="48" width="88" height="16" fill="#dcdcaa" opacity="0.2"/>
+    <text x="70" y="59" font-family="Arial" font-size="12" fill="#dcdcaa" font-weight="bold">↕</text>
+  </g>
+  
+  <!-- "CSV" text at bottom -->
+  <text x="64" y="115" font-family="Arial" font-size="16" fill="#858585" text-anchor="middle" font-weight="bold">CSV</text>
+</svg>
