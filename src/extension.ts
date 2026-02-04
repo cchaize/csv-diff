@@ -126,7 +126,7 @@ async function showCsvDiff(fileUri: vscode.Uri) {
         const diff = analyzeCsvDiff(oldData, newData);
 
         // Display report
-        await displayDiffReport(fileUri, diff);
+        await displayDiffReport(fileUri, diff, oldData, newData);
     } catch (error) {
         vscode.window.showErrorMessage(`Error analyzing CSV: ${error}`);
     }
@@ -289,7 +289,12 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
     return diff;
 }
 
-async function displayDiffReport(fileUri: vscode.Uri, diff: CsvDiff) {
+async function displayDiffReport(
+    fileUri: vscode.Uri,
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+) {
     const panel = vscode.window.createWebviewPanel(
         "csvDiffReport",
         `CSV Diff: ${path.basename(fileUri.fsPath)}`,
@@ -297,11 +302,148 @@ async function displayDiffReport(fileUri: vscode.Uri, diff: CsvDiff) {
         {},
     );
 
-    panel.webview.html = getWebviewContent(fileUri, diff);
+    panel.webview.html = getWebviewContent(fileUri, diff, oldData, newData);
 }
 
-function getWebviewContent(fileUri: vscode.Uri, diff: CsvDiff): string {
+function buildCompleteView(
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+) {
+    // Build headers in the correct order:
+    // - Follow current order (newHeaders)
+    // - Insert removed columns at their original position
+    const allHeaders: string[] = [];
+    const headerStatus: Map<string, "added" | "removed" | "moved" | "normal"> =
+        new Map();
+
+    const maxHeaderLength = Math.max(diff.oldHeaders.length, diff.newHeaders.length);
+    const addedHeaders = new Set<string>();
+
+    for (let i = 0; i < maxHeaderLength; i++) {
+        // First, add removed column from old position if exists
+        if (i < diff.oldHeaders.length) {
+            const oldHeader = diff.oldHeaders[i];
+            if (diff.removedColumns.includes(oldHeader)) {
+                if (!addedHeaders.has(oldHeader)) {
+                    allHeaders.push(oldHeader);
+                    headerStatus.set(oldHeader, "removed");
+                    addedHeaders.add(oldHeader);
+                }
+            }
+        }
+
+        // Then, add current column at this position if exists
+        if (i < diff.newHeaders.length) {
+            const newHeader = diff.newHeaders[i];
+            if (!addedHeaders.has(newHeader)) {
+                allHeaders.push(newHeader);
+                addedHeaders.add(newHeader);
+
+                // Determine status
+                if (diff.addedColumns.includes(newHeader)) {
+                    headerStatus.set(newHeader, "added");
+                } else if (
+                    diff.movedColumns.some((m) => m.column === newHeader)
+                ) {
+                    headerStatus.set(newHeader, "moved");
+                } else {
+                    headerStatus.set(newHeader, "normal");
+                }
+            }
+        }
+    }
+
+    // Build all rows with their status
+    const allRows: Array<{
+        data: Map<string, string>;
+        status: "added" | "removed" | "moved" | "normal";
+        identifier: string;
+    }> = [];
+
+    const oldRows = oldData.slice(1);
+    const newRows = newData.slice(1);
+
+    // Build a map of old row identifiers to their index
+    const oldRowIndexMap = new Map<string, number>();
+    for (let i = 0; i < oldRows.length; i++) {
+        oldRowIndexMap.set(oldRows[i][0], i);
+    }
+
+    // Build a map of new row identifiers to their index
+    const newRowIndexMap = new Map<string, number>();
+    for (let i = 0; i < newRows.length; i++) {
+        newRowIndexMap.set(newRows[i][0], i);
+    }
+
+    const maxLength = Math.max(oldRows.length, newRows.length);
+    const processedOldRows = new Set<number>();
+    const processedNewRows = new Set<number>();
+
+    for (let i = 0; i < maxLength; i++) {
+        // First, add deleted row from old position if exists
+        if (i < oldRows.length && !processedOldRows.has(i)) {
+            const oldRow = oldRows[i];
+            const identifier = oldRow[0];
+
+            if (diff.deletedRows.some((row) => row[0] === identifier)) {
+                const rowData = new Map<string, string>();
+                for (let j = 0; j < diff.oldHeaders.length; j++) {
+                    rowData.set(diff.oldHeaders[j], oldRow[j]);
+                }
+                allRows.push({
+                    data: rowData,
+                    status: "removed",
+                    identifier: identifier,
+                });
+                processedOldRows.add(i);
+            }
+        }
+
+        // Then, add current row at this position if exists
+        if (i < newRows.length && !processedNewRows.has(i)) {
+            const newRow = newRows[i];
+            const identifier = newRow[0];
+
+            const rowData = new Map<string, string>();
+            for (let j = 0; j < diff.newHeaders.length; j++) {
+                rowData.set(diff.newHeaders[j], newRow[j]);
+            }
+
+            // Determine status
+            let status: "added" | "removed" | "moved" | "normal" = "normal";
+            if (diff.addedRows.some((row) => row[0] === identifier)) {
+                status = "added";
+            } else if (diff.movedRows.some((m) => m.rowId === identifier)) {
+                status = "moved";
+            }
+
+            allRows.push({
+                data: rowData,
+                status: status,
+                identifier: identifier,
+            });
+            processedNewRows.add(i);
+
+            // Mark old row as processed if it exists
+            const oldIndex = oldRowIndexMap.get(identifier);
+            if (oldIndex !== undefined) {
+                processedOldRows.add(oldIndex);
+            }
+        }
+    }
+
+    return { allHeaders, headerStatus, allRows };
+}
+
+function getWebviewContent(
+    fileUri: vscode.Uri,
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+): string {
     const fileName = path.basename(fileUri.fsPath);
+    const completeView = buildCompleteView(diff, oldData, newData);
 
     let html = `<!DOCTYPE html>
 <html lang="fr">
@@ -380,6 +522,44 @@ function getWebviewContent(fileUri: vscode.Uri, diff: CsvDiff): string {
             font-style: italic;
             color: var(--vscode-descriptionForeground);
             margin-bottom: 5px;
+        }
+        .complete-table {
+            overflow-x: auto;
+        }
+        .complete-table table {
+            font-size: 0.85em;
+        }
+        .complete-table th.header-added {
+            background-color: rgba(78, 201, 176, 0.2);
+            color: #4ec9b0;
+        }
+        .complete-table th.header-removed {
+            background-color: rgba(244, 135, 113, 0.2);
+            color: #f48771;
+        }
+        .complete-table th.header-moved {
+            background-color: rgba(220, 220, 170, 0.2);
+            color: #dcdcaa;
+        }
+        .complete-table tr.row-added {
+            background-color: rgba(78, 201, 176, 0.1);
+        }
+        .complete-table tr.row-removed {
+            background-color: rgba(244, 135, 113, 0.1);
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
+        }
+        .complete-table tr.row-moved {
+            background-color: rgba(220, 220, 170, 0.1);
+        }
+        .complete-table td.cell-diagonal {
+            background: 
+                linear-gradient(to top right,
+                    rgba(0,0,0,0) 0%,
+                    rgba(0,0,0,0) calc(50% - 1px),
+                    var(--vscode-panel-border) 50%,
+                    rgba(0,0,0,0) calc(50% + 1px),
+                    rgba(0,0,0,0) 100%);
         }
     </style>
 </head>
@@ -494,6 +674,57 @@ function getWebviewContent(fileUri: vscode.Uri, diff: CsvDiff): string {
                 `
                 : '<p class="no-changes">Aucune ligne supprimée</p>'
         }
+    </div>
+    
+    <div class="section complete-table">
+        <h2>📋 Vue complète</h2>
+        <p style="color: var(--vscode-descriptionForeground); font-size: 0.9em;">
+            Affichage de toutes les lignes et colonnes avec leur statut
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    ${completeView.allHeaders
+                        .map((header) => {
+                            const status =
+                                completeView.headerStatus.get(header) ||
+                                "normal";
+                            const className =
+                                status === "normal" ? "" : `header-${status}`;
+                            return `<th class="${className}">${header}</th>`;
+                        })
+                        .join("")}
+                </tr>
+            </thead>
+            <tbody>
+                ${completeView.allRows
+                    .map((row) => {
+                        const rowClass =
+                            row.status === "normal" ? "" : `row-${row.status}`;
+                        return `<tr class="${rowClass}">
+                        ${completeView.allHeaders
+                            .map((header) => {
+                                const cellValue = row.data.get(header) || "";
+                                const headerStatus =
+                                    completeView.headerStatus.get(header) ||
+                                    "normal";
+
+                                // Diagonal line for added rows + removed columns
+                                const isDiagonal =
+                                    row.status === "added" &&
+                                    headerStatus === "removed";
+                                const cellClass = isDiagonal
+                                    ? "cell-diagonal"
+                                    : "";
+
+                                return `<td class="${cellClass}">${cellValue}</td>`;
+                            })
+                            .join("")}
+                    </tr>`;
+                    })
+                    .join("")}
+            </tbody>
+        </table>
     </div>
 </body>
 </html>`;
