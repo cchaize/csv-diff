@@ -19,31 +19,12 @@ A VSCode extension that displays differences in modified CSV files, similar to t
 1. Download the latest `.vsix` file from [GitHub Releases](https://github.com/cchaize/csv-diff/releases)
 
 2. Install it in VSCode:
-   - **Option A (GUI)**: `Extensions` → `...` → `Install from VSIX...` → Select the file
-   - **Option B (Command line)**:
-     ```bash
-     code --install-extension csv-diff-viewer-0.0.1.vsix
-     ```
-   - **Option C (Download + Install)**:
-     ```bash
-     wget https://github.com/cchaize/csv-diff/releases/download/v0.0.1/csv-diff-viewer-0.0.1.vsix
-     code --install-extension ./csv-diff-viewer-0.0.1.vsix
-     ```
-
-### For Colleagues
-
-1. Install `vsce` (VSCode Extension Manager):
-    ```bash
-    npm install -g @vscode/vsce
-    ```
-2. Create the VSIX package:
-    ```bash
-    vsce package
-    ```
-3. Share the generated `.vsix` file with colleagues
-4. They can install it in VSCode:
-    - `Extensions` → `...` → `Install from VSIX...`
-    - Or via command line: `code --install-extension csv-diff-viewer-0.0.1.vsix`
+    - **Option A (GUI)**: `Extensions` → `...` → `Install from VSIX...` → Select the file
+    - **Option B (Download + Install)**:
+        ```bash
+        wget https://github.com/cchaize/csv-diff/releases/download/v0.0.1/csv-diff-viewer-0.0.1.vsix
+        code --install-extension ./csv-diff-viewer-0.0.1.vsix
+        ```
 
 ### For Local Development
 
