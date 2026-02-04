@@ -1,146 +1,149 @@
-# CSV Diff Viewer - Extension VSCode
+# CSV Diff Viewer - VSCode Extension
 
-Une extension VSCode qui affiche les différences dans les fichiers CSV modifiés, similaire à l'interface Source Control.
+A VSCode extension that displays differences in modified CSV files, similar to the Source Control interface.
 
-## 🎯 Fonctionnalités
+## 🎯 Features
 
-- **Vue Source Control pour CSV** : Affiche tous les fichiers CSV modifiés dans une vue dédiée
-- **Analyse des différences** :
-  - Colonnes ajoutées ➕
-  - Colonnes supprimées ➖
-  - Colonnes déplacées 🔄
-  - Lignes déplacées ↕️
-- **Rapport visuel** : Interface claire avec code couleur pour chaque type de modification
+- **Source Control View for CSV** : Displays all modified CSV files in a dedicated view
+- **Difference Analysis** :
+    - Added columns ➕
+    - Removed columns ➖
+    - Moved columns 🔄
+    - Moved rows ↕️
+- **Visual Report** : Clear interface with color coding for each type of modification
 
 ## 📦 Installation
 
-### Méthode 1 : Développement local
+### Method 1: Local Development
 
-1. Clonez ou copiez les fichiers de l'extension dans un dossier
-2. Ouvrez le dossier dans VSCode
-3. Installez les dépendances :
-   ```bash
-   npm install
-   ```
-4. Compilez l'extension :
-   ```bash
-   npm run compile
-   ```
-5. Appuyez sur `F5` pour lancer l'extension en mode debug
+1. Clone or copy the extension files to a folder
+2. Open the folder in VSCode
+3. Install dependencies:
+    ```bash
+    npm install
+    ```
+4. Compile the extension:
+    ```bash
+    npm run compile
+    ```
+5. Press `F5` to launch the extension in debug mode
 
-### Méthode 2 : Package VSIX
+### Method 2: VSIX Package
 
-1. Installez `vsce` (VSCode Extension Manager) :
-   ```bash
-   npm install -g @vscode/vsce
-   ```
-2. Créez le package :
-   ```bash
-   vsce package
-   ```
-3. Installez le fichier `.vsix` généré :
-   - Menu VSCode : `Extensions` → `...` → `Install from VSIX...`
-   - Ou via ligne de commande : `code --install-extension csv-diff-viewer-0.0.1.vsix`
+1. Install `vsce` (VSCode Extension Manager):
+    ```bash
+    npm install -g @vscode/vsce
+    ```
+2. Create the package:
+    ```bash
+    vsce package
+    ```
+3. Install the generated `.vsix` file:
+    - VSCode Menu: `Extensions` → `...` → `Install from VSIX...`
+    - Or via command line: `code --install-extension csv-diff-viewer-0.0.1.vsix`
 
-## 🚀 Utilisation
+## 🚀 Usage
 
-1. **Ouvrez un projet Git** contenant des fichiers CSV
-2. **Modifiez un fichier CSV** dans votre projet
-3. **Ouvrez la vue "CSV Changes"** :
-   - Elle apparaît automatiquement dans la section Source Control
-   - Ou via `Ctrl+Shift+P` → "View: Show CSV Changes"
-4. **Cliquez sur un fichier CSV** dans la liste pour voir le rapport des différences
+1. **Open a Git project** containing CSV files
+2. **Modify a CSV file** in your project
+3. **Open the "CSV Changes" view**:
+    - It appears automatically in the Source Control section
+    - Or via `Ctrl+Shift+P` → "View: Show CSV Changes"
+4. **Click on a CSV file** in the list to see the difference report
 
-## 📊 Exemple de rapport
+## 📊 Report Example
 
-Le rapport affiche :
+The report displays:
 
 ```
-📊 Rapport de différences CSV
-Fichier: data.csv
+📊 CSV Diff Report
+File: data.csv
 
-➕ Colonnes ajoutées (2)
+➕ Added Columns (2)
 • email
 • phone
 
-➖ Colonnes supprimées (1)
+➖ Removed Columns (1)
 • fax
 
-🔄 Colonnes déplacées (1)
+🔄 Moved Columns (1)
 • name: position 2 → 0
 
-↕️ Lignes déplacées (3)
-• Ligne "Alice": ligne 2 → 5
-• Ligne "Bob": ligne 3 → 2
+↕️ Moved Rows (3)
+• Row "Alice": row 2 → 5
+• Row "Bob": row 3 → 2
 ```
 
-## 🔧 Configuration requise
+## 🔧 Requirements
 
-- VSCode version 1.85.0 ou supérieure
-- Git installé et initialisé dans votre workspace
-- Extension Git de VSCode activée
+- VSCode version 1.85.0 or higher
+- Git installed and initialized in your workspace
+- VSCode Git extension enabled
 
-## ⚙️ Commandes disponibles
+## ⚙️ Available Commands
 
-- `CSV Diff Viewer: Refresh` - Rafraîchir la liste des fichiers CSV modifiés
-- `CSV Diff Viewer: Show Diff` - Afficher le rapport de différences (automatique au clic)
+- `CSV Diff Viewer: Refresh` - Refresh the list of modified CSV files
+- `CSV Diff Viewer: Show Diff` - Display the difference report (automatic on click)
 
-## 🏗️ Structure du projet
+## 🏗️ Project Structure
 
 ```
 csv-diff-extension/
-├── package.json          # Configuration de l'extension
-├── tsconfig.json         # Configuration TypeScript
+├── package.json          # Extension configuration
+├── tsconfig.json         # TypeScript configuration
 ├── src/
-│   └── extension.ts      # Code principal de l'extension
-└── README.md            # Ce fichier
+│   └── extension.ts      # Main extension code
+└── README.md            # This file
 ```
 
-## 🔍 Comment ça marche
+## 🔍 How It Works
 
-1. **Détection** : L'extension surveille les changements Git pour identifier les fichiers CSV modifiés
-2. **Extraction** : Elle récupère la version HEAD (git) et la version actuelle du fichier
-3. **Parsing** : Utilise `csv-parse` pour analyser les deux versions
-4. **Analyse** : Compare les en-têtes et les lignes pour détecter les modifications
-5. **Affichage** : Génère un rapport HTML avec code couleur dans un webview
+1. **Detection** : The extension monitors Git changes to identify modified CSV files
+2. **Extraction** : It retrieves the HEAD version (git) and the current version of the file
+3. **Parsing** : Uses `csv-parse` to analyze both versions
+4. **Analysis** : Compares headers and rows to detect modifications
+5. **Display** : Generates an HTML report with color coding in a webview
 
-## 🛠️ Développement
+## 🛠️ Development
 
-### Compiler en mode watch
+### Compile in watch mode
+
 ```bash
 npm run watch
 ```
 
-### Débugger
-1. Appuyez sur `F5` dans VSCode
-2. Une nouvelle fenêtre VSCode s'ouvre avec l'extension chargée
-3. Ouvrez un projet Git avec des CSV
-4. Modifiez un CSV et observez la vue "CSV Changes"
+### Debugging
 
-## 📝 Notes techniques
+1. Press `F5` in VSCode
+2. A new VSCode window opens with the extension loaded
+3. Open a Git project with CSV files
+4. Modify a CSV and watch the "CSV Changes" view
 
-- **Identification des lignes** : L'extension utilise la première colonne comme identifiant unique pour détecter les déplacements de lignes
-- **Format CSV** : Compatible avec les CSV standards (virgule, point-virgule, etc.)
-- **Performance** : Optimisé pour des fichiers CSV de taille moyenne (< 10 000 lignes)
+## 📝 Technical Notes
 
-## 🐛 Limitations connues
+- **Row Identification** : The extension uses the first column as a unique identifier to detect row movements
+- **CSV Format** : Compatible with standard CSV formats (comma, semicolon, etc.)
+- **Performance** : Optimized for medium-sized CSV files (< 10,000 rows)
 
-- Les lignes doivent avoir un identifiant unique dans la première colonne pour la détection de déplacement
-- Ne détecte pas les modifications du contenu des cellules (uniquement structure)
-- Nécessite un repository Git
+## 🐛 Known Limitations
 
-## 🤝 Contribuer
+- Rows must have a unique identifier in the first column for movement detection
+- Does not detect content modifications in cells (structure only)
+- Requires a Git repository
 
-Pour contribuer à cette extension :
-1. Fork le projet
-2. Créez une branche pour votre fonctionnalité
-3. Committez vos changements
-4. Créez une Pull Request
+## 🤝 Contributing
 
-## 📄 Licence
+To contribute to this extension:
+
+1. Fork the project
+2. Create a branch for your feature
+3. Commit your changes
+4. Create a Pull Request
+
+## 📄 License
 
 MIT
 
-## 👤 Auteur
+## 👤 Author
 
-Extension créée pour faciliter la gestion et le suivi des modifications de fichiers CSV dans VSCode.
+Extension created to facilitate management and tracking of CSV file modifications in VSCode.
