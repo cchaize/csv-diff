@@ -233,7 +233,8 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
             )
             .filter((index) => index !== -1);
 
-        // Track which rows have been matched to avoid duplicates
+        // First pass: match all rows and detect added/deleted
+        const rowMatches: Array<{ oldIndex: number; newIndex: number; rowData: string[] }> = [];
         const matchedOldRows = new Set<number>();
         const matchedNewRows = new Set<number>();
 
@@ -256,18 +257,12 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
                     found = true;
                     matchedNewRows.add(j);
                     matchedOldRows.add(i);
-
-                    // Only add to movedRows if position changed
-                    if (i !== j) {
-                        // Use first column as row identifier for display
-                        const rowId = oldRows[i][0];
-                        diff.movedRows.push({
-                            rowId: rowId,
-                            oldIndex: i + 1, // +1 because we excluded header
-                            newIndex: j + 1,
-                            rowData: newRows[j],
-                        });
-                    }
+                    
+                    rowMatches.push({
+                        oldIndex: i,
+                        newIndex: j,
+                        rowData: newRows[j]
+                    });
                     break;
                 }
             }
@@ -284,9 +279,71 @@ function analyzeCsvDiff(oldData: string[][], newData: string[][]): CsvDiff {
                 diff.addedRows.push(newRows[j]);
             }
         }
+
+        // Second pass: detect actual moves using Longest Increasing Subsequence (LIS)
+        // Rows that maintain their relative order are not moved
+        // Only rows that break the sequence are marked as moved
+        
+        // Build sequence of newIndex values for matched rows
+        const newIndices = rowMatches.map(m => m.newIndex);
+        
+        // Find Longest Increasing Subsequence
+        const lis = getLongestIncreasingSubsequence(newIndices);
+        const lisSet = new Set(lis);
+        
+        // Mark rows not in LIS as moved
+        for (const match of rowMatches) {
+            if (!lisSet.has(match.newIndex)) {
+                const rowId = oldRows[match.oldIndex][0];
+                diff.movedRows.push({
+                    rowId: rowId,
+                    oldIndex: match.oldIndex + 1, // +1 because we excluded header
+                    newIndex: match.newIndex + 1,
+                    rowData: match.rowData,
+                });
+            }
+        }
     }
 
     return diff;
+}
+
+// Helper function: Find Longest Increasing Subsequence indices
+function getLongestIncreasingSubsequence(arr: number[]): number[] {
+    if (arr.length === 0) return [];
+    
+    const n = arr.length;
+    const dp: number[] = new Array(n).fill(1);
+    const parent: number[] = new Array(n).fill(-1);
+    
+    for (let i = 1; i < n; i++) {
+        for (let j = 0; j < i; j++) {
+            if (arr[j] < arr[i] && dp[j] + 1 > dp[i]) {
+                dp[i] = dp[j] + 1;
+                parent[i] = j;
+            }
+        }
+    }
+    
+    // Find index with maximum LIS length
+    let maxLength = 0;
+    let maxIndex = 0;
+    for (let i = 0; i < n; i++) {
+        if (dp[i] > maxLength) {
+            maxLength = dp[i];
+            maxIndex = i;
+        }
+    }
+    
+    // Reconstruct LIS
+    const result: number[] = [];
+    let current = maxIndex;
+    while (current !== -1) {
+        result.unshift(arr[current]);
+        current = parent[current];
+    }
+
+    return result;
 }
 
 async function displayDiffReport(
@@ -409,7 +466,7 @@ function buildCompleteView(
             const identifier = newRow[0];
 
             const rowData = new Map<string, string>();
-            
+
             // Add values from new data
             for (let j = 0; j < diff.newHeaders.length; j++) {
                 rowData.set(diff.newHeaders[j], newRow[j]);
@@ -734,12 +791,12 @@ function getWebviewContent(
                                 const isDiagonal =
                                     row.status === "added" &&
                                     headerStatus === "removed";
-                                
+
                                 // Red background for removed columns (except for added rows)
                                 const isRemovedColumn =
                                     headerStatus === "removed" &&
                                     row.status !== "added";
-                                
+
                                 let cellClass = "";
                                 if (isDiagonal) {
                                     cellClass = "cell-diagonal";
