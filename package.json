@@ -1,0 +1,60 @@
+{
+  "name": "csv-diff-viewer",
+  "displayName": "CSV Diff Viewer",
+  "description": "Affiche les différences dans les fichiers CSV modifiés",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:csvDiffView"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "views": {
+      "scm": [
+        {
+          "id": "csvDiffView",
+          "name": "CSV Changes"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "csvDiffViewer.refresh",
+        "title": "Refresh CSV Changes",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "csvDiffViewer.showDiff",
+        "title": "Show CSV Diff"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "csvDiffViewer.refresh",
+          "when": "view == csvDiffView",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "csv-parse": "^5.5.3"
+  }
+}
