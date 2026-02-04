@@ -1,7 +1,5 @@
 # CSV Diff Viewer - VSCode Extension
 
-add right click et log
-
 A VSCode extension that displays differences in modified CSV files, similar to the Source Control interface.
 
 ## 🎯 Features
@@ -43,12 +41,21 @@ A VSCode extension that displays differences in modified CSV files, similar to t
 
 ## 🚀 Usage
 
+### Compare Working Changes (CSV Changes View)
+
 1. **Open a Git project** containing CSV files
 2. **Modify a CSV file** in your project
 3. **Open the "CSV Changes" view**:
     - It appears automatically in the Source Control section
     - Or via `Ctrl+Shift+P` → "View: Show CSV Changes"
 4. **Click on a CSV file** in the list to see the difference report
+
+### Compare Staged Changes (Right-click on File Tab)
+
+1. **Stage a CSV file** in Git (`git add file.csv`)
+2. **Open the staged CSV file** in the editor (click the tab)
+3. **Right-click on the file tab** and select **"Show Staged Changes Diff"**
+4. The report will display differences between the **staged version** and the **last commit**
 
 ## 📊 Report Example
 
