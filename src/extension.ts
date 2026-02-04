@@ -317,7 +317,10 @@ function buildCompleteView(
     const headerStatus: Map<string, "added" | "removed" | "moved" | "normal"> =
         new Map();
 
-    const maxHeaderLength = Math.max(diff.oldHeaders.length, diff.newHeaders.length);
+    const maxHeaderLength = Math.max(
+        diff.oldHeaders.length,
+        diff.newHeaders.length,
+    );
     const addedHeaders = new Set<string>();
 
     for (let i = 0; i < maxHeaderLength; i++) {
@@ -446,7 +449,7 @@ function getWebviewContent(
     const completeView = buildCompleteView(diff, oldData, newData);
 
     let html = `<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -564,29 +567,29 @@ function getWebviewContent(
     </style>
 </head>
 <body>
-    <h1>📊 Rapport de différences CSV</h1>
-    <p><strong>Fichier:</strong> ${fileName}</p>
+    <h1>📊 CSV Diff Report</h1>
+    <p><strong>File:</strong> ${fileName}</p>
     
     <div class="section">
-        <h2 class="added">➕ Colonnes ajoutées <span class="count">(${diff.addedColumns.length})</span></h2>
+        <h2 class="added">➕ Added Columns <span class="count">(${diff.addedColumns.length})</span></h2>
         ${
             diff.addedColumns.length > 0
                 ? `<ul>${diff.addedColumns.map((col) => `<li class="added">• ${col}</li>`).join("")}</ul>`
-                : '<p class="no-changes">Aucune colonne ajoutée</p>'
+                : '<p class="no-changes">No columns added</p>'
         }
     </div>
     
     <div class="section">
-        <h2 class="removed">➖ Colonnes supprimées <span class="count">(${diff.removedColumns.length})</span></h2>
+        <h2 class="removed">➖ Removed Columns <span class="count">(${diff.removedColumns.length})</span></h2>
         ${
             diff.removedColumns.length > 0
                 ? `<ul>${diff.removedColumns.map((col) => `<li class="removed">• ${col}</li>`).join("")}</ul>`
-                : '<p class="no-changes">Aucune colonne supprimée</p>'
+                : '<p class="no-changes">No columns removed</p>'
         }
     </div>
     
     <div class="section">
-        <h2 class="moved">🔄 Colonnes déplacées <span class="count">(${diff.movedColumns.length})</span></h2>
+        <h2 class="moved">🔄 Moved Columns <span class="count">(${diff.movedColumns.length})</span></h2>
         ${
             diff.movedColumns.length > 0
                 ? `<ul>${diff.movedColumns
@@ -595,18 +598,18 @@ function getWebviewContent(
                               `<li class="moved">• ${m.column}: position ${m.oldIndex} → ${m.newIndex}</li>`,
                       )
                       .join("")}</ul>`
-                : '<p class="no-changes">Aucune colonne déplacée</p>'
+                : '<p class="no-changes">No columns moved</p>'
         }
     </div>
     
     <div class="section">
-        <h2 class="moved">↕️ Lignes déplacées <span class="count">(${diff.movedRows.length})</span></h2>
+        <h2 class="moved">↕️ Moved Rows <span class="count">(${diff.movedRows.length})</span></h2>
         ${
             diff.movedRows.length > 0
                 ? diff.movedRows
                       .map(
                           (m) => `
-                    <div class="row-info">Ligne ${m.oldIndex} → ${m.newIndex}</div>
+                    <div class="row-info">Row ${m.oldIndex} → ${m.newIndex}</div>
                     <table>
                         <thead>
                             <tr>
@@ -622,12 +625,12 @@ function getWebviewContent(
                 `,
                       )
                       .join("")
-                : '<p class="no-changes">Aucune ligne déplacée</p>'
+                : '<p class="no-changes">No rows moved</p>'
         }
     </div>
     
     <div class="section">
-        <h2 class="added">➕ Lignes ajoutées <span class="count">(${diff.addedRows.length})</span></h2>
+        <h2 class="added">➕ Added Rows <span class="count">(${diff.addedRows.length})</span></h2>
         ${
             diff.addedRows.length > 0
                 ? `
@@ -647,12 +650,12 @@ function getWebviewContent(
                     </tbody>
                 </table>
                 `
-                : '<p class="no-changes">Aucune ligne ajoutée</p>'
+                : '<p class="no-changes">No rows added</p>'
         }
     </div>
     
     <div class="section">
-        <h2 class="removed">➖ Lignes supprimées <span class="count">(${diff.deletedRows.length})</span></h2>
+        <h2 class="removed">➖ Removed Rows <span class="count">(${diff.deletedRows.length})</span></h2>
         ${
             diff.deletedRows.length > 0
                 ? `
@@ -672,14 +675,14 @@ function getWebviewContent(
                     </tbody>
                 </table>
                 `
-                : '<p class="no-changes">Aucune ligne supprimée</p>'
+                : '<p class="no-changes">No rows removed</p>'
         }
     </div>
     
     <div class="section complete-table">
-        <h2>📋 Vue complète</h2>
+        <h2>📋 Complete View</h2>
         <p style="color: var(--vscode-descriptionForeground); font-size: 0.9em;">
-            Affichage de toutes les lignes et colonnes avec leur statut
+            Display of all rows and columns with their status
         </p>
         <table>
             <thead>
