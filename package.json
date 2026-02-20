@@ -31,7 +31,8 @@
         "onView:csvDiffView",
         "onCommand:csvDiffViewer.refresh",
         "onCommand:csvDiffViewer.showDiff",
-        "onCommand:csvDiffViewer.showStagedDiff"
+        "onCommand:csvDiffViewer.showStagedDiff",
+        "onCommand:csvDiffViewer.showConflictDiff"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -56,6 +57,10 @@
             {
                 "command": "csvDiffViewer.showStagedDiff",
                 "title": "Show Staged Changes Diff"
+            },
+            {
+                "command": "csvDiffViewer.showConflictDiff",
+                "title": "Show Merge Conflict Diff"
             }
         ],
         "menus": {

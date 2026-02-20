@@ -55,6 +55,18 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "csvDiffViewer.showConflictDiff",
+            async (item: CsvFileItem) => {
+                outputChannel.appendLine(
+                    `[CONFLICT DIFF] Command triggered for: ${item.label}`,
+                );
+                await showConflictDiff(item.resourceUri);
+            },
+        ),
+    );
+
     // Auto-refresh on file changes
     const watcher = vscode.workspace.createFileSystemWatcher("**/*.csv");
     watcher.onDidChange(() => csvDiffProvider.refresh());
@@ -95,17 +107,39 @@ class CsvDiffProvider implements vscode.TreeDataProvider<CsvFileItem> {
         }
 
         for (const repo of git.repositories) {
-            const changes = repo.state.workingTreeChanges;
-
-            for (const change of changes) {
+            // Handle merge conflicts first
+            const mergeChanges = repo.state.mergeChanges;
+            for (const change of mergeChanges) {
                 if (change.uri.fsPath.endsWith(".csv")) {
                     modifiedCsvFiles.push(
                         new CsvFileItem(
                             path.basename(change.uri.fsPath),
                             change.uri,
                             vscode.TreeItemCollapsibleState.None,
+                            true, // isConflict
                         ),
                     );
+                }
+            }
+
+            // Handle regular working tree changes
+            const changes = repo.state.workingTreeChanges;
+            for (const change of changes) {
+                if (change.uri.fsPath.endsWith(".csv")) {
+                    // Skip if already added as conflict
+                    const isAlreadyAdded = modifiedCsvFiles.some(
+                        (item) => item.resourceUri.fsPath === change.uri.fsPath,
+                    );
+                    if (!isAlreadyAdded) {
+                        modifiedCsvFiles.push(
+                            new CsvFileItem(
+                                path.basename(change.uri.fsPath),
+                                change.uri,
+                                vscode.TreeItemCollapsibleState.None,
+                                false, // isConflict
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -119,15 +153,25 @@ class CsvFileItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly resourceUri: vscode.Uri,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly isConflict: boolean = false,
     ) {
         super(label, collapsibleState);
-        this.tooltip = resourceUri.fsPath;
+        this.tooltip = isConflict
+            ? `${resourceUri.fsPath} (merge conflict)`
+            : resourceUri.fsPath;
         this.command = {
-            command: "csvDiffViewer.showDiff",
-            title: "Show CSV Diff",
+            command: isConflict
+                ? "csvDiffViewer.showConflictDiff"
+                : "csvDiffViewer.showDiff",
+            title: isConflict ? "Show Conflict Diff" : "Show CSV Diff",
             arguments: [this],
         };
-        this.iconPath = new vscode.ThemeIcon("file-text");
+        this.iconPath = new vscode.ThemeIcon(
+            isConflict ? "git-merge" : "file-text",
+        );
+        if (isConflict) {
+            this.description = "⚠️ conflict";
+        }
     }
 }
 
@@ -292,6 +336,87 @@ async function showCsvDiff(fileUri: vscode.Uri) {
     } catch (error) {
         outputChannel.appendLine(`[WORKING DIFF] Error: ${String(error)}`);
         vscode.window.showErrorMessage(`Error analyzing CSV: ${error}`);
+    }
+}
+
+async function showConflictDiff(fileUri: vscode.Uri) {
+    try {
+        outputChannel.appendLine(
+            `[CONFLICT DIFF] showConflictDiff called for: ${fileUri.fsPath}`,
+        );
+        const gitExtension =
+            vscode.extensions.getExtension("vscode.git")?.exports;
+        const git = gitExtension?.getAPI(1);
+
+        if (!git || git.repositories.length === 0) {
+            outputChannel.appendLine("[CONFLICT DIFF] No git repository found");
+            vscode.window.showErrorMessage("No git repository found");
+            return;
+        }
+
+        const repo = git.repositories[0];
+        outputChannel.appendLine("[CONFLICT DIFF] Git repository found");
+
+        // Get "ours" version (current branch) - stage 2
+        outputChannel.appendLine(
+            "[CONFLICT DIFF] Fetching 'ours' version (current branch)",
+        );
+        let oursContent: string;
+        try {
+            oursContent = await repo.show(":2", fileUri.fsPath);
+        } catch (error) {
+            outputChannel.appendLine(
+                `[CONFLICT DIFF] Error fetching 'ours' version: ${error}`,
+            );
+            vscode.window.showErrorMessage(
+                "Unable to fetch 'ours' version. Make sure the file is in merge conflict state.",
+            );
+            return;
+        }
+
+        // Get "theirs" version (incoming branch) - stage 3
+        outputChannel.appendLine(
+            "[CONFLICT DIFF] Fetching 'theirs' version (incoming branch)",
+        );
+        let theirsContent: string;
+        try {
+            theirsContent = await repo.show(":3", fileUri.fsPath);
+        } catch (error) {
+            outputChannel.appendLine(
+                `[CONFLICT DIFF] Error fetching 'theirs' version: ${error}`,
+            );
+            vscode.window.showErrorMessage(
+                "Unable to fetch 'theirs' version. Make sure the file is in merge conflict state.",
+            );
+            return;
+        }
+
+        // Parse CSV files
+        outputChannel.appendLine("[CONFLICT DIFF] Parsing CSV files");
+        const oldData = parseCsv(oursContent);
+        const newData = parseCsv(theirsContent);
+
+        outputChannel.appendLine(
+            `[CONFLICT DIFF] Ours rows: ${oldData.length}, Theirs rows: ${newData.length}`,
+        );
+
+        // Analyze differences
+        outputChannel.appendLine("[CONFLICT DIFF] Analyzing differences");
+        const diff = analyzeCsvDiff(oldData, newData);
+
+        outputChannel.appendLine(
+            `[CONFLICT DIFF] Columns: ${diff.addedColumns.length} added, ${diff.removedColumns.length} removed, ${diff.movedColumns.length} moved`,
+        );
+        outputChannel.appendLine(
+            `[CONFLICT DIFF] Rows: ${diff.addedRows.length} added, ${diff.deletedRows.length} deleted, ${diff.movedRows.length} moved`,
+        );
+
+        // Display report
+        outputChannel.appendLine("[CONFLICT DIFF] Displaying report");
+        await displayConflictDiffReport(fileUri, diff, oldData, newData);
+    } catch (error) {
+        outputChannel.appendLine(`[CONFLICT DIFF] Error: ${String(error)}`);
+        vscode.window.showErrorMessage(`Error analyzing conflict: ${error}`);
     }
 }
 
@@ -565,6 +690,27 @@ async function displayStagedDiffReport(
     );
 
     panel.webview.html = getStagedWebviewContent(
+        fileUri,
+        diff,
+        oldData,
+        newData,
+    );
+}
+
+async function displayConflictDiffReport(
+    fileUri: vscode.Uri,
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+) {
+    const panel = vscode.window.createWebviewPanel(
+        "csvConflictDiffReport",
+        `Merge Conflict: ${path.basename(fileUri.fsPath)}`,
+        vscode.ViewColumn.One,
+        {},
+    );
+
+    panel.webview.html = getConflictWebviewContent(
         fileUri,
         diff,
         oldData,
@@ -1264,6 +1410,343 @@ function getStagedWebviewContent(
     
     <div class="section">
         <h2 class="removed">➖ Removed Rows <span class="count">(${diff.deletedRows.length})</span></h2>
+        ${
+            diff.deletedRows.length > 0
+                ? `
+                <table>
+                    <thead>
+                        <tr>
+                            ${diff.oldHeaders.map((h) => `<th>${h}</th>`).join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diff.deletedRows
+                            .map(
+                                (row) =>
+                                    `<tr class="removed">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+                `
+                : '<p class="no-changes">No rows removed</p>'
+        }
+    </div>
+    
+    <div class="section complete-table">
+        <h2>📋 Complete View</h2>
+        <p style="color: var(--vscode-descriptionForeground); font-size: 0.9em;">
+            Display of all rows and columns with their status
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    ${completeView.allHeaders
+                        .map((header) => {
+                            const status =
+                                completeView.headerStatus.get(header) ||
+                                "normal";
+                            const className =
+                                status === "normal" ? "" : `header-${status}`;
+                            return `<th class="${className}">${header}</th>`;
+                        })
+                        .join("")}
+                </tr>
+            </thead>
+            <tbody>
+                ${completeView.allRows
+                    .map((row) => {
+                        const rowClass =
+                            row.status === "normal" ? "" : `row-${row.status}`;
+                        return `<tr class="${rowClass}">
+                        ${completeView.allHeaders
+                            .map((header) => {
+                                const cellValue = row.data.get(header) || "";
+                                const headerStatus =
+                                    completeView.headerStatus.get(header) ||
+                                    "normal";
+
+                                // Diagonal line for added rows + removed columns
+                                const isDiagonal =
+                                    row.status === "added" &&
+                                    headerStatus === "removed";
+
+                                // Red background for removed columns (except for added rows)
+                                const isRemovedColumn =
+                                    headerStatus === "removed" &&
+                                    row.status !== "added";
+
+                                let cellClass = "";
+                                if (isDiagonal) {
+                                    cellClass = "cell-diagonal";
+                                } else if (isRemovedColumn) {
+                                    cellClass = "cell-removed-column";
+                                }
+
+                                return `<td class="${cellClass}">${cellValue}</td>`;
+                            })
+                            .join("")}
+                    </tr>`;
+                    })
+                    .join("")}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+
+    return html;
+}
+
+function getConflictWebviewContent(
+    fileUri: vscode.Uri,
+    diff: CsvDiff,
+    oldData: string[][],
+    newData: string[][],
+): string {
+    const fileName = path.basename(fileUri.fsPath);
+    const completeView = buildCompleteView(diff, oldData, newData);
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merge Conflict Report</title>
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            padding: 20px;
+            color: var(--vscode-foreground);
+        }
+        h1 {
+            color: var(--vscode-foreground);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin-top: 30px;
+            color: var(--vscode-foreground);
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: var(--vscode-editor-background);
+            border-radius: 5px;
+        }
+        .added {
+            color: #4ec9b0;
+        }
+        .removed {
+            color: #f48771;
+        }
+        .moved {
+            color: #dcdcaa;
+        }
+        ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        li {
+            padding: 5px 0;
+            margin: 5px 0;
+        }
+        .no-changes {
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+        }
+        .count {
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        table th {
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-foreground);
+            padding: 8px;
+            text-align: left;
+            border: 1px solid var(--vscode-panel-border);
+            font-weight: bold;
+        }
+        table td {
+            padding: 8px;
+            border: 1px solid var(--vscode-panel-border);
+        }
+        table tr:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        .row-info {
+            font-style: italic;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 5px;
+        }
+        .complete-table {
+            overflow-x: auto;
+        }
+        .complete-table table {
+            font-size: 0.85em;
+        }
+        .complete-table th.header-added {
+            background-color: rgba(78, 201, 176, 0.2);
+            color: #4ec9b0;
+        }
+        .complete-table th.header-removed {
+            background-color: rgba(244, 135, 113, 0.2);
+            color: #f48771;
+        }
+        .complete-table th.header-moved {
+            background-color: rgba(220, 220, 170, 0.2);
+            color: #dcdcaa;
+        }
+        .complete-table tr.row-added {
+            background-color: rgba(78, 201, 176, 0.1);
+        }
+        .complete-table tr.row-removed {
+            background-color: rgba(244, 135, 113, 0.1);
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
+        }
+        .complete-table tr.row-moved {
+            background-color: rgba(220, 220, 170, 0.1);
+        }
+        .complete-table td.cell-removed-column {
+            background-color: rgba(244, 135, 113, 0.3);
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.7;
+        }
+        .complete-table td.cell-diagonal {
+            background: 
+                linear-gradient(to top right,
+                    rgba(0,0,0,0) 0%,
+                    rgba(0,0,0,0) calc(50% - 1px),
+                    var(--vscode-panel-border) 50%,
+                    rgba(0,0,0,0) calc(50% + 1px),
+                    rgba(0,0,0,0) 100%);
+        }
+        .conflict-banner {
+            background-color: rgba(244, 135, 113, 0.2);
+            border: 2px solid #f48771;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #f48771;
+        }
+        .conflict-legend {
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .conflict-legend div {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="conflict-banner">
+        <strong>⚠️ Merge Conflict</strong><br>
+        <small>This file is in merge conflict state</small>
+        <div class="conflict-legend">
+            <div><span class="removed">• Removed (Ours - Current Branch)</span></div>
+            <div><span class="added">• Added (Theirs - Incoming Branch)</span></div>
+        </div>
+    </div>
+    
+    <h1>📊 Merge Conflict Report</h1>
+    <p><strong>File:</strong> ${fileName}</p>
+    <p style="color: var(--vscode-descriptionForeground); font-size: 0.9em;">
+        Comparing your current branch version (ours) with incoming branch version (theirs)
+    </p>
+    
+    <div class="section">
+        <h2 class="added">➕ Added Columns (from incoming branch) <span class="count">(${diff.addedColumns.length})</span></h2>
+        ${
+            diff.addedColumns.length > 0
+                ? `<ul>${diff.addedColumns.map((col) => `<li class="added">• ${col}</li>`).join("")}</ul>`
+                : '<p class="no-changes">No columns added</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="removed">➖ Removed Columns (from current branch) <span class="count">(${diff.removedColumns.length})</span></h2>
+        ${
+            diff.removedColumns.length > 0
+                ? `<ul>${diff.removedColumns.map((col) => `<li class="removed">• ${col}</li>`).join("")}</ul>`
+                : '<p class="no-changes">No columns removed</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="moved">🔄 Moved Columns <span class="count">(${diff.movedColumns.length})</span></h2>
+        ${
+            diff.movedColumns.length > 0
+                ? `<ul>${diff.movedColumns
+                      .map(
+                          (m) =>
+                              `<li class="moved">• ${m.column}: position ${m.oldIndex} → ${m.newIndex}</li>`,
+                      )
+                      .join("")}</ul>`
+                : '<p class="no-changes">No columns moved</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="moved">↕️ Moved Rows <span class="count">(${diff.movedRows.length})</span></h2>
+        ${
+            diff.movedRows.length > 0
+                ? diff.movedRows
+                      .map(
+                          (m) => `
+                    <div class="row-info">Row ${m.oldIndex} → ${m.newIndex}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                ${diff.newHeaders.map((h) => `<th>${h}</th>`).join("")}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="moved">
+                                ${m.rowData.map((cell) => `<td>${cell}</td>`).join("")}
+                            </tr>
+                        </tbody>
+                    </table>
+                `,
+                      )
+                      .join("")
+                : '<p class="no-changes">No rows moved</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="added">➕ Added Rows (from incoming branch) <span class="count">(${diff.addedRows.length})</span></h2>
+        ${
+            diff.addedRows.length > 0
+                ? `
+                <table>
+                    <thead>
+                        <tr>
+                            ${diff.newHeaders.map((h) => `<th>${h}</th>`).join("")}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diff.addedRows
+                            .map(
+                                (row) =>
+                                    `<tr class="added">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`,
+                            )
+                            .join("")}
+                    </tbody>
+                </table>
+                `
+                : '<p class="no-changes">No rows added</p>'
+        }
+    </div>
+    
+    <div class="section">
+        <h2 class="removed">➖ Removed Rows (from current branch) <span class="count">(${diff.deletedRows.length})</span></h2>
         ${
             diff.deletedRows.length > 0
                 ? `
